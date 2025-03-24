@@ -4,24 +4,37 @@ import os
 
 app = Flask(__name__)
 
+def is_valid_ip(ip):
+    """Verifica se o IP é público (não local/privado)"""
+    if not ip:
+        return False
+    # Lista de IPs privados/localhost
+    private_prefixes = ('127.', '10.', '172.16.', '192.168.', '::1')
+    return not ip.startswith(private_prefixes)
+
 @app.route('/get_location', methods=['GET'])
 def get_location():
     try:
-        # 1. Prioriza o IP do usuário do TypeBot (não do servidor Render)
-        user_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+        # 1. Pega o IP do parâmetro da URL (se fornecido)
+        user_ip = request.args.get('ip', '').strip()
         
-        # 2. Se não houver IP (TypeBot em embed), usa o IP remoto
+        # 2. Se não houver IP na URL, pega do cabeçalho HTTP (X-Forwarded-For)
         if not user_ip:
-            user_ip = request.remote_addr
-            
-        # 3. Evita retornar IPs locais/privados (ex.: do Render)
-        if user_ip in ('127.0.0.1', '::1') or user_ip.startswith(('10.', '172.', '192.')):
-            return jsonify({"error": "Localização indisponível"}), 400
+            forwarded_ips = request.headers.get('X-Forwarded-For', '').split(',')
+            user_ip = next((ip.strip() for ip in forwarded_ips if is_valid_ip(ip)), None)
+        
+        # 3. Se ainda não houver IP válido, usa o IP remoto (com verificação)
+        if not user_ip:
+            user_ip = request.remote_addr if is_valid_ip(request.remote_addr) else None
+        
+        # 4. Se nenhum IP válido for encontrado, retorna erro
+        if not user_ip:
+            return jsonify({"error": "Não foi possível determinar seu IP público"}), 400
 
-        # 4. Consulta a API de geolocalização
+        # 5. Consulta a API de geolocalização
         api_key = os.getenv("IPGEOLOCATION_API_KEY")
         if not api_key:
-            return jsonify({"error": "Configuração inválida"}), 500
+            return jsonify({"error": "Configuração de API inválida"}), 500
 
         api_url = f"https://api.ipgeolocation.io/ipgeo?apiKey={api_key}&ip={user_ip}&fields=city,latitude,longitude"
         response = requests.get(api_url, timeout=3)
@@ -30,9 +43,9 @@ def get_location():
         return jsonify(response.json())
 
     except requests.exceptions.RequestException:
-        return jsonify({"error": "Serviço de geolocalização indisponível"}), 502
+        return jsonify({"error": "Serviço de geolocalização temporariamente indisponível"}), 502
     except Exception:
-        return jsonify({"error": "Erro interno"}), 500
+        return jsonify({"error": "Erro interno no servidor"}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
