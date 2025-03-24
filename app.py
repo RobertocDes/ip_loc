@@ -1,11 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
+import os
 
 app = Flask(__name__)
 
 @app.route('/mapa_moteis', methods=['GET'])
 def mapa_moteis():
-    # Obtém as coordenadas do usuário (ou padrão: São Paulo)
+    # Obtém as coordenadas (padrão: São Paulo)
     lat = request.args.get('lat', '-23.5505')
     lng = request.args.get('lng', '-46.6333')
     
@@ -17,16 +18,15 @@ def mapa_moteis():
     """
     
     try:
-        # Faz a requisição para a API Overpass
         response = requests.get(
             "https://overpass-api.de/api/interpreter",
             params={'data': overpass_query},
             timeout=5
         )
         motels = response.json().get('elements', [])
-        
-        # Gera o HTML com mapa interativo
-        return f"""
+
+        # HTML do mapa (agora sem comentários nas f-strings!)
+        html = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -55,43 +55,38 @@ def mapa_moteis():
                     {"".join(
                         f'<li><strong>{motel["tags"].get("name", "Motel")}</strong><br>'
                         f'{motel["tags"].get("addr:street", "Endereço não disponível")}</li>'
-                        for motel in motels[:5]  # Limita a 5 resultados
+                        for motel in motels[:5]
                     )}
                 </ul>
             </div>
             
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
             <script>
-                // Mapa centralizado na localização do usuário
                 var map = L.map('map').setView([{lat}, {lng}], 14);
-                
-                // Camada do OpenStreetMap
                 L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    attribution: '&copy; OpenStreetMap'
                 }}).addTo(map);
                 
-                // Marcador do usuário
-                L.marker([{lat}, {lng}]).addTo(map)
-                    .bindPopup("Sua localização");
+                L.marker([{lat}, {lng}]).addTo(map).bindPopup("Sua localização");
                 
-                // Marcadores dos motéis
-                {"" if not motels else "".join(
+                {"".join(
                     f'L.marker([{motel.get("lat", motel["center"]["lat"])},'
                     f'{motel.get("lon", motel["center"]["lon"])}]).addTo(map)'
-                    f'.bindPopup("{motel["tags"].get("name", "Motel")}");'
-                    for motel in motels[:5]  # Limita a 5 marcadores
+                    f'.bindPopup("{motel["tags"].get("name", "Motel").replace("\"", "\\"")}");'
+                    for motel in motels[:5]
                 )}
             </script>
         </body>
         </html>
         """
+        return html
     
     except Exception as e:
-        return f"""
+        return """
         <html>
         <body>
             <h3>Erro ao carregar o mapa</h3>
-            <p>Por favor, tente novamente mais tarde.</p>
+            <p>Tente novamente mais tarde.</p>
         </body>
         </html>
         """
