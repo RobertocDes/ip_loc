@@ -4,88 +4,68 @@ import os
 
 app = Flask(__name__)
 
+def escape_quotes(text):
+    """Remove aspas problemáticas para JavaScript"""
+    return text.replace('"', '').replace("'", "")
+
 @app.route('/mapa_moteis', methods=['GET'])
 def mapa_moteis():
-    # Obtém as coordenadas (padrão: São Paulo)
-    lat = request.args.get('lat', '-23.5505')
-    lng = request.args.get('lng', '-46.6333')
-    
-    # Consulta motéis no OpenStreetMap (raio de 3km)
-    overpass_query = f"""
-    [out:json];
-    node[amenity=hotel][name~"motel|Motel"](around:3000,{lat},{lng});
-    out center;
-    """
-    
     try:
-        response = requests.get(
-            "https://overpass-api.de/api/interpreter",
-            params={'data': overpass_query},
-            timeout=5
-        )
-        motels = response.json().get('elements', [])
+        # Coordenadas padrão (São Paulo)
+        lat = request.args.get('lat', '-23.5505')
+        lng = request.args.get('lng', '-46.6333')
+        
+        # Consulta simplificada ao OpenStreetMap
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        query = f"""
+        [out:json];
+        node[amenity=hotel][name~"motel"](around:3000,{lat},{lng});
+        out;
+        """
+        
+        response = requests.get(overpass_url, params={'data': query}, timeout=5)
+        motels = response.json().get('elements', [])[:3]  # Limita a 3 resultados
 
-        # HTML do mapa (agora sem comentários nas f-strings!)
-        html = f"""
+        # Gera marcadores de forma segura
+        markers_js = ""
+        for motel in motels:
+            name = escape_quotes(motel.get('tags', {}).get('name', 'Motel'))
+            mlat = motel.get('lat', 0)
+            mlon = motel.get('lon', 0)
+            markers_js += f"""
+            L.marker([{mlat}, {mlon}]).addTo(map)
+                .bindPopup("{name}");
+            """
+
+        # HTML completo com fallbacks seguros
+        return f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Motéis Próximos</title>
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
             <style>
-                #map {{ 
-                    height: 400px; 
-                    width: 100%;
-                    border-radius: 10px;
-                    margin-bottom: 15px;
-                }}
-                .motel-info {{ 
-                    padding: 10px;
-                    background: #f8f9fa;
-                    border-radius: 5px;
-                    margin-top: 10px;
-                }}
+                #map {{ height: 400px; width: 100%; border: 1px solid #ddd; }}
             </style>
         </head>
         <body>
             <div id="map"></div>
-            <div class="motel-info">
-                <h3>Motéis próximos:</h3>
-                <ul>
-                    {"".join(
-                        f'<li><strong>{motel["tags"].get("name", "Motel")}</strong><br>'
-                        f'{motel["tags"].get("addr:street", "Endereço não disponível")}</li>'
-                        for motel in motels[:5]
-                    )}
-                </ul>
-            </div>
-            
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
             <script>
                 var map = L.map('map').setView([{lat}, {lng}], 14);
-                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    attribution: '&copy; OpenStreetMap'
-                }}).addTo(map);
-                
-                L.marker([{lat}, {lng}]).addTo(map).bindPopup("Sua localização");
-                
-                {"".join(
-                    f'L.marker([{motel.get("lat", motel["center"]["lat"])},'
-                    f'{motel.get("lon", motel["center"]["lon"])}]).addTo(map)'
-                    f'.bindPopup("{motel["tags"].get("name", "Motel").replace("\"", "\\"")}");'
-                    for motel in motels[:5]
-                )}
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map);
+                L.marker([{lat}, {lng}]).addTo(map).bindPopup("Você está aqui");
+                {markers_js}
             </script>
         </body>
         </html>
         """
-        return html
-    
-    except Exception as e:
+
+    except Exception:
         return """
         <html>
         <body>
-            <h3>Erro ao carregar o mapa</h3>
+            <h3>Serviço temporariamente indisponível</h3>
             <p>Tente novamente mais tarde.</p>
         </body>
         </html>
