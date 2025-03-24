@@ -1,1 +1,4 @@
-.env
+# Arquivos a ignorar
+.env           # Ignora o arquivo .env e suas variáveis
+__pycache__/   # Ignora cache do Python
+*.pyc          # Ignora bytecode do Python
