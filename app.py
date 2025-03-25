@@ -1,9 +1,10 @@
 from flask import Flask, request
 import requests
+import os
 
 app = Flask(__name__)
 
-GOOGLE_API_KEY = "SUA_CHAVE_AQUI"
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")  # Pega a chave do ambiente
 
 def get_client_ip():
     forwarded_ips = request.headers.get('X-Forwarded-For', '')
@@ -17,93 +18,110 @@ def get_nearby_motels(lat, lng):
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": f"{lat},{lng}",
-        "radius": 50000,  # 50km conforme você ajustou
-        "type": "motel",
+        "radius": 50000,
+        "keyword": "motel",
         "key": GOOGLE_API_KEY
     }
     response = requests.get(url, params=params).json()
     
-    if response.get("status") == "OK" and len(response.get("results", [])) >= 2:
+    if response.get("status") == "OK" and len(response.get("results", [])) >= 1:
         motels = response["results"]
-        return motels[1]  # Segundo motel
+        return motels[0]  # Primeiro motel
     return None
 
 @app.route('/')
 @app.route('/mapa')
 def mostrar_mapa():
-    client_ip = get_client_ip()
+    client_ip = get_client_ip()  # IP dinâmico do cliente
     
-    # Inicializa com padrão
     lat = -22.970722
     lng = -43.182365
     location_info = "Localização padrão (Copacabana)"
-    motel_info = "Nenhum motel encontrado"
+    motel_name = "Nenhum"
 
-    # Tenta obter a localização do usuário
     try:
-        # Verifica se o IP parece privado
-        if not client_ip.startswith(('10.', '172.', '192.168.', '127.')):
-            response = requests.get(f"https://ipapi.co/{client_ip}/json/").json()
-            if "latitude" in response and "longitude" in response and response.get("latitude") is not None:
-                lat = float(response["latitude"])
-                lng = float(response["longitude"])
+        response = requests.get(f"https://ipapi.co/{client_ip}/json/", timeout=5).json()
+        if "latitude" in response and "longitude" in response and response.get("latitude") is not None:
+            lat = float(response["latitude"])
+            lng = float(response["longitude"])
+            location_info = f"Sua localização: {response.get('city', 'Cidade desconhecida')}, {response.get('country_name', 'País desconhecido')}"
+        else:
+            response = requests.get(f"https://ipinfo.io/{client_ip}/json", timeout=5).json()
+            if "loc" in response:
+                lat_str, lng_str = response["loc"].split(",")
+                lat = float(lat_str)
+                lng = float(lng_str)
                 location_info = f"Sua localização: {response.get('city', 'Cidade desconhecida')}, {response.get('country_name', 'País desconhecido')}"
             else:
-                location_info = "Erro: Dados de localização inválidos retornados pela API"
-            
-            # Busca motel próximo
-            motel = get_nearby_motels(lat, lng)
-            if motel:
-                motel_lat = motel["geometry"]["location"]["lat"]
-                motel_lng = motel["geometry"]["location"]["lng"]
-                motel_name = motel["name"]
-                motel_info = f"Segundo motel mais próximo: {motel_name}"
-                lat = motel_lat
-                lng = motel_lng
-            else:
-                motel_info = "Não foi possível encontrar o segundo motel mais próximo (50km)"
+                location_info = "Erro: Dados de localização inválidos das APIs"
+        
+        motel = get_nearby_motels(lat, lng)
+        if motel:
+            motel_lat = motel["geometry"]["location"]["lat"]
+            motel_lng = motel["geometry"]["location"]["lng"]
+            motel_name = motel["name"]
+            lat = motel_lat
+            lng = motel_lng
         else:
-            location_info = "IP privado detectado, usando padrão"
+            motel_name = "Nenhum motel encontrado"
     except Exception as e:
         location_info = f"Erro ao obter localização: {str(e)}"
+
+    # Formata o nome da rede: pega as duas primeiras palavras, remove "motel" e junta sem espaços
+    motel_name_clean = motel_name.replace("motel", "").replace("Motel", "").strip()
+    words = motel_name_clean.split()
+    if len(words) >= 2:
+        motel_name_clean = "".join(words[:2])
+    else:
+        motel_name_clean = "".join(words)
+
+    # Mensagem formatada para a página com a nova linha
+    page_content = f"""
+    <b>📶Conectou em um wifi suspeito</b><br>
+    Nome da rede: {motel_name_clean}<br>
+    Conectado durante 1h 09min<br>
+    📅Data: Indisponível na consulta grátis🔒
+    """
 
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Segundo Motel Mais Próximo</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <title>Motel Mais Próximo</title>
         <style>
-            body {{ font-family: Arial; padding: 20px; }}
-            #map {{ height: 500px; width: 100%; border: 2px solid #0078d4; border-radius: 10px; }}
+            body {{ font-family: Arial; padding: 20px; text-align: center; }}
+            #map {{ height: 500px; width: 100%; border: 2px solid #0078d4; border-radius: 10px; margin-top: 20px; }}
             .info {{ margin: 10px 0; }}
+            .info b {{ font-size: 24px; }}
             .error {{ color: red; }}
         </style>
     </head>
     <body>
-        <h1>🌍 Segundo Motel Mais Próximo</h1>
-        <p class="info">IP detectado: {client_ip}</p>
-        <p class="info">{location_info}</p>
-        <p class="info">{motel_info}</p>
-        <p class="info">Coordenadas exibidas: Lat {lat}, Long {lng}</p>
+        <div class="info">{page_content}</div>
         <div id="map"></div>
 
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script src="https://maps.googleapis.com/maps/api/js?key={GOOGLE_API_KEY}&callback=initMap" async defer></script>
         <script>
-            try {{
-                var map = L.map('map').setView([{lat}, {lng}], 15);
-                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    maxZoom: 19,
-                    attribution: '© OpenStreetMap'
-                }}).addTo(map);
-                L.marker([{lat}, {lng}]).addTo(map)
-                    .bindPopup("{motel_info}")
-                    .openPopup();
-                console.log("Mapa carregado com sucesso!");
-            }} catch (e) {{
-                console.error("Erro no mapa:", e);
-                document.getElementById('map').innerHTML = 
-                    '<p class="error">Erro ao carregar o mapa. Verifique o console.</p>';
+            function initMap() {{
+                try {{
+                    const location = {{ lat: {lat}, lng: {lng} }};
+                    const map = new google.maps.Map(document.getElementById("map"), {{
+                        center: location,
+                        zoom: 15,
+                    }});
+                    const marker = new google.maps.Marker({{
+                        position: location,
+                        map: map,
+                        title: "{motel_name}"
+                    }});
+                    const infowindow = new google.maps.InfoWindow({{
+                        content: "<b>{motel_name}</b>"
+                    }});
+                    infowindow.open(map, marker);
+                }} catch (e) {{
+                    document.getElementById("map").innerHTML = 
+                        '<p class="error">Erro ao carregar o mapa. Detalhes no console.</p>';
+                }}
             }}
         </script>
     </body>
