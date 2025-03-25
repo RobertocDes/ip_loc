@@ -118,6 +118,8 @@ def mostrar_mapa():
             function initMap() {{
                 try {{
                     const location = {{ lat: {lat}, lng: {lng} }};
+
+                    // Inicia com o mapa normal
                     const map = new google.maps.Map(document.getElementById("map"), {{
                         center: location,
                         zoom: 15,
@@ -131,6 +133,21 @@ def mostrar_mapa():
                         content: "<b>{motel_name}</b>"
                     }});
                     infowindow.open(map, marker);
+
+                    // Após 8 segundos, muda para Street View
+                    setTimeout(() => {{
+                        const panorama = new google.maps.StreetViewPanorama(
+                            document.getElementById("map"), {{
+                                position: location,
+                                pov: {{ heading: 165, pitch: 0 }}, // Direção e ângulo iniciais
+                                zoom: 1,
+                                disableDefaultUI: false // Mantém controles padrão
+                            }}
+                        );
+                        // Opcional: adiciona o marcador ao Street View
+                        marker.setMap(panorama);
+                        infowindow.open(panorama, marker);
+                    }}, 8000); // 8000ms = 8 segundos
                 }} catch (e) {{
                     document.getElementById("map").innerHTML = 
                         '<p class="error">Erro ao carregar o mapa.</p>';
@@ -142,5 +159,5 @@ def mostrar_mapa():
     """
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Usa a porta do Render ou 5000 localmente
-    app.run(host='0.0.0.0', port=port, debug=False)  # Debug=False em produção
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
