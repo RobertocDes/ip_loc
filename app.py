@@ -4,42 +4,89 @@ import requests
 app = Flask(__name__)
 
 def get_client_ip():
-    # Obtém o cabeçalho X-Forwarded-For (usado por proxies como o Render)
+    # Obtém o cabeçalho X-Forwarded-For (usado por proxies)
     forwarded_ips = request.headers.get('X-Forwarded-For', '')
     if forwarded_ips:
-        # Pega o primeiro IP da lista (IP original do cliente)
         client_ip = forwarded_ips.split(',')[0].strip()
     else:
-        # Fallback para IP direto (se não houver proxy)
         client_ip = request.remote_addr
-    
     return client_ip
 
-@app.route('/my-location')
-def get_location():
+@app.route('/')  # Rota raiz
+@app.route('/mapa')  # Rota alternativa
+def mostrar_mapa():
+    # Obtém o IP do cliente
     client_ip = get_client_ip()
     
-    # Verifica se o IP é público (não é privado ou localhost)
-    if client_ip.startswith(('10.', '172.', '192.168.', '127.')):
-        return jsonify({
-            "error": "Não foi possível detectar um IP público válido.",
-            "your_ip": client_ip
-        }), 400
+    # Coordenadas padrão (Copacabana) caso a localização falhe
+    lat = '-22.970722'
+    lng = '-43.182365'
+    location_info = "Localização padrão (Copacabana)"
     
+    # Tenta obter a localização real
     try:
-        response = requests.get(f"https://ipapi.co/{client_ip}/json/").json()
-        return jsonify({
-            "your_ip": client_ip,
-            "location": {
-                "city": response.get("city"),
-                "country": response.get("country_name"),
-                "latitude": response.get("latitude"),
-                "longitude": response.get("longitude"),
-                "region": response.get("region")
-            }
-        })
+        if not client_ip.startswith(('10.', '172.', '192.168.', '127.')):
+            response = requests.get(f"https://ipapi.co/{client_ip}/json/").json()
+            if "latitude" in response and "longitude" in response:
+                lat = response["latitude"]
+                lng = response["longitude"]
+                location_info = f"{response.get('city', 'Cidade desconhecida')}, {response.get('country_name', 'País desconhecido')}"
+            else:
+                location_info = "Erro: Dados de localização incompletos"
+        else:
+            location_info = "IP privado detectado, usando localização padrão"
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        location_info = f"Erro ao obter localização: {str(e)}"
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Seu Local no Mapa</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <style>
+            body {{ font-family: Arial; padding: 20px; }}
+            #map {{ 
+                height: 500px; 
+                width: 100%;
+                border: 2px solid #0078d4;
+                border-radius: 10px;
+            }}
+            .info {{ margin: 10px 0; }}
+            .error {{ color: red; }}
+        </style>
+    </head>
+    <body>
+        <h1>🌍 Seu Local no Mapa</h1>
+        <p class="info">IP detectado: {client_ip}</p>
+        <p class="info">Localização: {location_info}</p>
+        <p class="info">Coordenadas: Lat {lat}, Long {lng}</p>
+        <div id="map"></div>
+
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+            try {{
+                var map = L.map('map').setView([{lat}, {lng}], 15);
+                
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap'
+                }}).addTo(map);
+                
+                L.marker([{lat}, {lng}]).addTo(map)
+                    .bindPopup("{location_info}")
+                    .openPopup();
+                    
+                console.log("Mapa carregado com sucesso!");
+            }} catch (e) {{
+                console.error("Erro no mapa:", e);
+                document.getElementById('map').innerHTML = 
+                    '<p class="error">Erro ao carregar o mapa. Verifique o console.</p>';
+            }}
+        </script>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
