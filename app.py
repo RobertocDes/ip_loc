@@ -18,7 +18,7 @@ def get_nearby_motels(lat, lng):
     url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": f"{lat},{lng}",
-        "radius": 5000,  # Raio de busca em metros (5km)
+        "radius": 50000,  # Raio de busca em metros (5km)
         "type": "motel",  # Tipo de lugar (pode ser "lodging" para incluir hotéis)
         "key": GOOGLE_API_KEY
     }
