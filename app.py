@@ -119,10 +119,12 @@ def mostrar_mapa():
                 try {{
                     const location = {{ lat: {lat}, lng: {lng} }};
 
-                    // Inicia com o mapa normal
+                    // Inicia com o mapa normal sem controles de tipo e Street View
                     const map = new google.maps.Map(document.getElementById("map"), {{
                         center: location,
                         zoom: 15,
+                        mapTypeControl: false, // Remove botão mapa/satélite
+                        streetViewControl: false // Remove bonequinho Street View
                     }});
                     const marker = new google.maps.Marker({{
                         position: location,
@@ -134,20 +136,20 @@ def mostrar_mapa():
                     }});
                     infowindow.open(map, marker);
 
-                    // Após 8 segundos, muda para Street View
+                    // Após 8 segundos, muda para Street View sem controles
                     setTimeout(() => {{
                         const panorama = new google.maps.StreetViewPanorama(
                             document.getElementById("map"), {{
                                 position: location,
-                                pov: {{ heading: 165, pitch: 0 }}, // Direção e ângulo iniciais
+                                pov: {{ heading: 165, pitch: 0 }},
                                 zoom: 1,
-                                disableDefaultUI: false // Mantém controles padrão
+                                mapTypeControl: false, // Remove botão mapa/satélite
+                                streetViewControl: false // Remove bonequinho
                             }}
                         );
-                        // Opcional: adiciona o marcador ao Street View
                         marker.setMap(panorama);
                         infowindow.open(panorama, marker);
-                    }}, 8000); // 8000ms = 8 segundos
+                    }}, 8000);
                 }} catch (e) {{
                     document.getElementById("map").innerHTML = 
                         '<p class="error">Erro ao carregar o mapa.</p>';
