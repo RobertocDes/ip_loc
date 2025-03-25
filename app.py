@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")  # Pega a chave do ambiente
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 def get_client_ip():
     forwarded_ips = request.headers.get('X-Forwarded-For', '')
@@ -26,13 +26,13 @@ def get_nearby_motels(lat, lng):
     
     if response.get("status") == "OK" and len(response.get("results", [])) >= 1:
         motels = response["results"]
-        return motels[0]  # Primeiro motel
+        return motels[0]
     return None
 
 @app.route('/')
 @app.route('/mapa')
 def mostrar_mapa():
-    client_ip = get_client_ip()  # IP dinâmico do cliente
+    client_ip = get_client_ip()
     
     lat = -22.970722
     lng = -43.182365
@@ -67,7 +67,6 @@ def mostrar_mapa():
     except Exception as e:
         location_info = f"Erro ao obter localização: {str(e)}"
 
-    # Formata o nome da rede: pega as duas primeiras palavras, remove "motel" e junta sem espaços
     motel_name_clean = motel_name.replace("motel", "").replace("Motel", "").strip()
     words = motel_name_clean.split()
     if len(words) >= 2:
@@ -75,12 +74,11 @@ def mostrar_mapa():
     else:
         motel_name_clean = "".join(words)
 
-    # Mensagem formatada para a página com a nova linha
     page_content = f"""
-    <b>📶Conectou em um wifi suspeito</b><br>
+    <b>📶 Conectou em um wifi suspeito</b><br>
     Nome da rede: {motel_name_clean}<br>
     Conectado durante 1h 09min<br>
-    📅Data: Indisponível na consulta grátis🔒
+    📅 Data: Indisponível na consulta grátis 🔒
     """
 
     return f"""
@@ -89,10 +87,25 @@ def mostrar_mapa():
     <head>
         <title>Motel Mais Próximo</title>
         <style>
-            body {{ font-family: Arial; padding: 20px; text-align: center; }}
-            #map {{ height: 500px; width: 100%; border: 2px solid #0078d4; border-radius: 10px; margin-top: 20px; }}
-            .info {{ margin: 10px 0; }}
-            .info b {{ font-size: 24px; }}
+            body {{ 
+                font-family: Arial; 
+                margin: 0; 
+                padding: 10px; 
+                text-align: center; 
+                height: 100vh; 
+                display: flex; 
+                flex-direction: column; 
+                justify-content: center; 
+            }}
+            #map {{ 
+                flex-grow: 1; 
+                width: 100%; 
+                border: 2px solid #0078d4; 
+                border-radius: 10px; 
+                margin-top: 10px; 
+            }}
+            .info {{ margin: 5px 0; }}
+            .info b {{ font-size: 20px; }}
             .error {{ color: red; }}
         </style>
     </head>
@@ -120,7 +133,7 @@ def mostrar_mapa():
                     infowindow.open(map, marker);
                 }} catch (e) {{
                     document.getElementById("map").innerHTML = 
-                        '<p class="error">Erro ao carregar o mapa. Detalhes no console.</p>';
+                        '<p class="error">Erro ao carregar o mapa.</p>';
                 }}
             }}
         </script>
@@ -129,4 +142,5 @@ def mostrar_mapa():
     """
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Usa a porta do Render ou 5000 localmente
+    app.run(host='0.0.0.0', port=port, debug=False)  # Debug=False em produção
