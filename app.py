@@ -1,10 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 
 app = Flask(__name__)
 
+# Substitua pela sua chave da Google Places API
+GOOGLE_API_KEY = "SUA_CHAVE_AQUI"
+
 def get_client_ip():
-    # Obtém o cabeçalho X-Forwarded-For (usado por proxies)
     forwarded_ips = request.headers.get('X-Forwarded-For', '')
     if forwarded_ips:
         client_ip = forwarded_ips.split(',')[0].strip()
@@ -12,17 +14,34 @@ def get_client_ip():
         client_ip = request.remote_addr
     return client_ip
 
-@app.route('/')  # Rota raiz
-@app.route('/mapa')  # Rota alternativa
+def get_nearby_motels(lat, lng):
+    url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+    params = {
+        "location": f"{lat},{lng}",
+        "radius": 5000,  # Raio de busca em metros (5km)
+        "type": "motel",  # Tipo de lugar (pode ser "lodging" para incluir hotéis)
+        "key": GOOGLE_API_KEY
+    }
+    response = requests.get(url, params=params).json()
+    
+    if response.get("status") == "OK" and len(response.get("results", [])) >= 2:
+        # Ordena por distância implicitamente (API já retorna por proximidade)
+        motels = response["results"]
+        return motels[1]  # Retorna o segundo motel (índice 1)
+    return None
+
+@app.route('/')
+@app.route('/mapa')
 def mostrar_mapa():
     # Obtém o IP do cliente
     client_ip = get_client_ip()
     
-    # Coordenadas padrão (Copacabana) caso a localização falhe
-    lat = '-22.970722'
-    lng = '-43.182365'
+    # Coordenadas padrão (Copacabana)
+    lat = -22.970722
+    lng = -43.182365
     location_info = "Localização padrão (Copacabana)"
-    
+    motel_info = "Nenhum motel encontrado"
+
     # Tenta obter a localização real
     try:
         if not client_ip.startswith(('10.', '172.', '192.168.', '127.')):
@@ -30,11 +49,19 @@ def mostrar_mapa():
             if "latitude" in response and "longitude" in response:
                 lat = response["latitude"]
                 lng = response["longitude"]
-                location_info = f"{response.get('city', 'Cidade desconhecida')}, {response.get('country_name', 'País desconhecido')}"
-            else:
-                location_info = "Erro: Dados de localização incompletos"
-        else:
-            location_info = "IP privado detectado, usando localização padrão"
+                location_info = f"Sua localização: {response.get('city', 'Cidade desconhecida')}, {response.get('country_name', 'País desconhecido')}"
+                
+                # Busca o segundo motel mais próximo
+                motel = get_nearby_motels(lat, lng)
+                if motel:
+                    motel_lat = motel["geometry"]["location"]["lat"]
+                    motel_lng = motel["geometry"]["location"]["lng"]
+                    motel_name = motel["name"]
+                    motel_info = f"Segundo motel mais próximo: {motel_name}"
+                    lat = motel_lat  # Atualiza as coordenadas para o motel
+                    lng = motel_lng
+                else:
+                    motel_info = "Não foi possível encontrar o segundo motel mais próximo"
     except Exception as e:
         location_info = f"Erro ao obter localização: {str(e)}"
 
@@ -42,7 +69,7 @@ def mostrar_mapa():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Seu Local no Mapa</title>
+        <title>Segundo Motel Mais Próximo</title>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
         <style>
             body {{ font-family: Arial; padding: 20px; }}
@@ -57,10 +84,11 @@ def mostrar_mapa():
         </style>
     </head>
     <body>
-        <h1>🌍 Seu Local no Mapa</h1>
+        <h1>🌍 Segundo Motel Mais Próximo</h1>
         <p class="info">IP detectado: {client_ip}</p>
-        <p class="info">Localização: {location_info}</p>
-        <p class="info">Coordenadas: Lat {lat}, Long {lng}</p>
+        <p class="info">{location_info}</p>
+        <p class="info">{motel_info}</p>
+        <p class="info">Coordenadas exibidas: Lat {lat}, Long {lng}</p>
         <div id="map"></div>
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -74,7 +102,7 @@ def mostrar_mapa():
                 }}).addTo(map);
                 
                 L.marker([{lat}, {lng}]).addTo(map)
-                    .bindPopup("{location_info}")
+                    .bindPopup("{motel_info}")
                     .openPopup();
                     
                 console.log("Mapa carregado com sucesso!");
