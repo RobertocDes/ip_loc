@@ -83,8 +83,6 @@ def mostrar_mapa():
     page_content = f"""
     <b>📶 Conectou em um wifi suspeito</b><br>
     Nome da rede: {motel_name_clean}<br>
-    Conectado durante 1h 09min<br>
-    📅 Data: Indisponível na consulta grátis 🔒
     """
 
     logger.info("Página gerada com sucesso")
